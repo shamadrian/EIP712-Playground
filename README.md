@@ -17,22 +17,27 @@ Ethereum uses the specific elliptic curve secp256k1 which stands for *Standards 
 - It is a koblitz curve which is a special class of curves optimised for faster signature verification.
 
 The curve is roughly defined as:
-$$y^2 = x^3 + 7$$ but over a finite field.
+```math
+y^2 = x^3 + 7
+```
+but over a finite field.
 
 ### Private Key
 A private key is simply just: 
-$$
+```math
 k \in [1,n-1]\\
 \text{where } n = \text{order of the curve} \sim 2^{256}
-$$Therefore, you can understand private key as a random 256-bit integer
+``` 
+Therefore, you can understand private key as a random 256-bit integer
 
 ### Public Key
 As we mentioned above, the public key is derived from the private key, but how? 
 There is a fixed point on the curve $G = (x , y)$
 We basically derive the public key by the following formula:
-$$
+```math
 \text{Public Key} = k\cdot G
-$$By the above formula, it is easy to compute $k\cdot G$ but practically impossible to recover $k$ from $k \cdot G$
+```
+By the above formula, it is easy to compute $k\cdot G$ but practically impossible to recover $k$ from $k \cdot G$
 This is based on the [Elliptic Curve Discrete Logarithm Problem (ECDLP)](https://www.cyfrin.io/blog/zk-math-101-the-elliptic-curve-discrete-logarithm-problem)
 
 ### Ethereum Address
