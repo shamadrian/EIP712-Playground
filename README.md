@@ -25,7 +25,7 @@ but over a finite field.
 ### Private Key
 A private key is simply just: 
 ```math
-k \in [1,n-1]\\
+k \in [1,n-1]\text{, } \\
 \text{where } n = \text{order of the curve} \sim 2^{256}
 ``` 
 Therefore, you can understand private key as a random 256-bit integer
