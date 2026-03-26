@@ -1,11 +1,10 @@
 # EIP712-Playground
 Hi! This is my personal playground for researching and playing with the EIP712 signature verification standard. If you want to learn more about EIP712, you can check their github repo [here](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md). Please do read along to my hands-on examples and detailed explanation of the usage and implementation of the standard.
 
-## 1. Introduction
 Before we get into the details of signature verification, you might want to understand how private key and public key works in Ethereum. If so, please [click here](./introduction/README.md) to our dedicated introduction.
 
 
-# 2. EIP-712
+# EIP-712
 
  EIP-712 is a standard for signing structured data in a way that is:
 
@@ -207,3 +206,14 @@ In `test_deliverAndReadMail` we try to replicate a real-world scenario of off ch
     Note: Contracts that implement EIP712 usually has the `DOMAIN_SEPARATOR` and `TYPEHASH` as public for users to read directly, but in case they didn't, all you need to do is follow the hashing method provided above
 - Mimic the signature signing off-chain with `vm.sign` foundry function
 - Mimic a relayer (any third-party address) to deliver the message on behalf of Alice with her signature
+
+# Real-world Usage
+You might already have a brief understanding of the importance of EIP712. Now it is time for us to take a look at how we can utilize this standard to improve the Ethereum ecosystem. 
+
+EIP-712 is widely adopted across DeFi and Web3:
+
+- **ERC20 Permit (EIP-2612)** → gasless token approvals  
+- **NFT marketplaces** → off-chain order signing  
+- **DAO voting systems** → signed votes  
+- **Authentication systems** → "Sign-in with Ethereum"  
+- **Bridges & cross-chain protocols** → verified off-chain intents  
