@@ -2,90 +2,163 @@
 Hi! This is my personal playground for researching and playing with the EIP712 signature verification standard. If you want to learn more about EIP712, you can check their github repo [here](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md). Please do read along to my hands-on examples and detailed explanation of the usage and implementation of the standard.
 
 ## 1. Introduction
-Before we get into the details of signature verification, we first have to understand how private key and public key works in Ethereum. 
->This section contains a lot of math concepts, you may feel free to skip if you are only concerned with the usage and implementation of EIP712 in smart contracts. [click here](#3-eip712)
+Before we get into the details of signature verification, you might want to understand how private key and public key works in Ethereum. If so, please [click here](./introduction/README.md) to our dedicated introduction.
 
-The core Idea of Ethereum Identity is as follows:
-- **Private Key**: A secret only owner knows
-- **Public Key**: A publicly known number derived from the secret
-- **Signature**: A proof you know the secret without revealing it
 
-These are all built on Elliptic Curve Cryptography
-### Ethereum's Specific Curve: secp256k1
-Ethereum uses the specific elliptic curve secp256k1 which stands for *Standards for Efficient Cryptography (SEC) prime field, 256-bit lenght, koblitz curve, version 1.* From the name you can derive the following properties:
-- The curve utilizes a 256-bit prime field $(2^{256}-2^{32}-2^9-2^8-2^7-2^6-2^4-1)$.
-- It is a koblitz curve which is a special class of curves optimised for faster signature verification.
+# 2. EIP-712
 
-The curve is roughly defined as:
-```math
-y^2 = x^3 + 7
-```
-but over a finite field.
+ EIP-712 is a standard for signing structured data in a way that is:
 
-### Private Key
-A private key is simply just: 
-```math
-k \in [1,n-1]\text{, } \\
-\text{where } n = \text{order of the curve} \sim 2^{256}
-``` 
-Therefore, you can understand private key as a random 256-bit integer
+- Human-readable
+- Deterministic
+- Secure against replay attacks
 
-### Public Key
-As we mentioned above, the public key is derived from the private key, but how? 
-There is a fixed point on the curve $G = (x , y)$
-We basically derive the public key by the following formula:
-```math
-\text{Public Key} = k\cdot G
-```
-By the above formula, it is easy to compute $k\cdot G$ but practically impossible to recover $k$ from $k \cdot G$
-This is based on the [Elliptic Curve Discrete Logarithm Problem (ECDLP)](https://www.cyfrin.io/blog/zk-math-101-the-elliptic-curve-discrete-logarithm-problem)
+## ❌ The Problem 
 
-### Ethereum Address
-Ethereum doesn't use the entire public key as address, but instead it hashes the public key with the Keccak-256 hash algorithm and take the last 20 bytes
+In Ethereum, signing typically looks like this:
+
+`keccak256(message)` → sign → verify
+
+This approach has several issues:
+
+1. **No structure** — everything becomes a blob of bytes
+2. **Ambiguity** — different inputs can hash to the same meaning
+3. **Poor UX** — users cannot clearly see what they are signing
+4. **Replay risks** — signatures can be reused across domains
+
+## ✅ Solution
+
+EIP-712 introduces structured signing by enforcing:
+
+- Typed data (like structs)
+- Domain separation (contract + chain-specific)
+- Deterministic encoding rules
+
+Instead of signing raw bytes, we sign:
+
 ```solidity
-address = keccak256(publicKey)[12:]
+keccak256(
+    "\x19\x01",
+    domainSeparator,
+    hashStruct(message)
+)
 ```
-Results:
-Private Key -> Public Key -> Address
-
-## 2. Signature
-Now we get into our main part. "Signing a message" means you are proving ownership of a private key over a specific 32-byte value. You can basically sign anything on chain, from arbitrary data, to permissions for third party to execute transactions on your behalf. 
-
-### ECDSA Signature
-In Ethereum, they use the Elliptic Curve Digital Signature Algorithm (ECDSA) for signing hash messages. When you sign a message in Ethereum, you produce:
+## Full flow of EIP 712
 ```
-(r,s,v) // This is the cryptographic proof
+User Input (Struct)
+        ↓
+encodeType
+        ↓
+encodeData
+        ↓
+hashStruct
+        ↓
+Domain Separator
+        ↓
+Final Digest
+        ↓
+ECDSA Sign
 ```
-A signature is built from 3 components:
-1. Your private key ($d$)
-2. The message hash ($z$)
-3. A random ephemeral key ($k$) 
 
-The following is the steps of creating a signature:
-1. **Generate a random point ($r$)**
-```math
-\begin{aligned}
-R = k \cdot G\\
-    = (x , y)\\
-r = R \cdot x \\
-\text{r is derived from the randomness of k}
-\end{aligned}
+So let's go through each of the important stages one by one. 
+
+Let's say we have the current struct
+```solidity
+struct Mail {
+    address from;
+    address to;
+    string contents;
+}
 ```
-2. **Combine everything together ($s$)**
-s is the glue that binds the message($z$), the private key($d$) and randomness ($k$) together.
-```math
-s = ((z +r \times d)/ k) mod(n)
-``` 
-3. **Add recovery info($v$)**
-from $r$ we only know $r = R \cdot x$, but on an elliptic curve, each $x$ corresponds to 2 possible value of $y$. so therefore $v$ tells us which of the two possible curve points is the correct $R$
-```math
-R = (x , y) \text{ or } (x , -y)
+Suppose Alice wants to send to Bob:
 ```
-### ecrecover
-Give we have $(r,s,v,z)$
-1. we can reconstruct $R$ using $(r,v)$
-2. use the equation in the above (2. combine everything together) to solve backwards and recover the public key
+From: alice's address
+To: bob's address
+Message: "Hello Bob"
+```
+Our goal is to transform this structured data into a deterministic hash that can be signed and later verified.
 
-## 3. EIP712
-After all the complex mathematics, and understanding how cryptography proofs work in Ethereum to power signing and verifying signature, we can finally move on to understand what the EIP-712 standard is about. 
+### 1. Encode Type
+The first step is to define the type signature of the struct.
+In our case, for our `Mail Struct`, we have:
+```solidity
+Mail(address from,address to,string contents)
+```
+Then we hash it into TYPE_HASH:
+```solidity
+bytes32 TYPE_HASH = keccak256(
+    "Mail(address from,address to,string contents)"
+);
+```
+This ensures that the structure itself is part of the signature.
+### 2. Encode Data
+Next, we encode the actual data according to strict rules.
+```solidity
+abi.encode(
+    TYPE_HASH, //our encode type
+    from, 
+    to,
+    keccak256(bytes(contents))
+)
+```
+⚠️ Important Notes
+- string and bytes are not encoded directly
+- They are first hashed using keccak256
+So in our case: 
+`keccak256(bytes("Hello Bob"));`
+### 3. Hash Struct
+```solidity
+bytes32 structHash = keccak256(
+    abi.encode(
+        TYPE_HASH,
+        from,
+        to,
+        keccak256(bytes(contents))
+    )
+);
+```
+At this stage, we have a deterministic hash representing our struct.
+### 4. Domain Separator
+In order to prevent replay attacks, EIP712 introduced domain separators
+```solidity
+bytes32 DOMAIN_SEPARATOR = keccak256(
+    abi.encode(
+        keccak256(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+        ),
+        keccak256(bytes("MyApp")),
+        keccak256(bytes("1")),
+        block.chainid,
+        address(this)
+    )
+);
+```
+- name, version, verifyingContract allows the signature to be tied to a specific contract to prevent cross contract replay attacks
+- chainId allows the signature to be tied to a specific chain to prevent cross-chain attacks
 
+### 5. Final Digest
+Now we combine everything together
+```solidity
+bytes32 digest = keccak256(
+    abi.encodePacked(
+        "\x19\x01",
+        DOMAIN_SEPARATOR,
+        structHash
+    )
+);
+```
+
+### 6. Signing
+Signing comes from off chain (e.g ethers.js):
+```javascript
+const signature = await signer.signTypedData(domain, types, message);
+```
+But for testing purposes, you can use foundry's `vm.sign`
+```solidity
+ (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+```
+### 7. Verification
+On-chain verification uses the `ecrecover` function
+```solidity
+address signer = ecrecover(digest, v, r, s);
+```
