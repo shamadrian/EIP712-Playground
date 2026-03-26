@@ -161,4 +161,49 @@ But for testing purposes, you can use foundry's `vm.sign`
 On-chain verification uses the `ecrecover` function
 ```solidity
 address signer = ecrecover(digest, v, r, s);
-```
+``` 
+
+## Example 
+
+To solidify the concepts above, this repository includes a **minimal on-chain mail system**:
+
+- `MailSystem.sol` → contract implementation  
+- `MailSystem.t.sol` → Foundry test demonstrating signing + verification  
+
+### MailSystem
+
+This example implements a **signature-based messaging system**:
+
+1. A sender (Alice) signs a structured `Mail` message **off-chain**  
+2. Anyone (relayer) can submit the signed message **on-chain**  
+3. The contract verifies the signature using EIP-712  
+4. The message is stored in the recipient’s inbox (Bob)  
+5. Only the recipient can read their own messages  
+
+This mirrors real-world patterns such as:
+- meta-transactions  
+- permit-style approvals  
+- off-chain authorization + on-chain execution  
+
+**Contract Implementation**
+- `MAIL_TYPEHASH` → defines struct format  
+- `DOMAIN_SEPARATOR` → binds signatures to this contract + chain  
+- `getDigest()` → builds the final signed message  
+
+This directly implements the flow:
+struct → hashStruct → domain → digest → verify
+- Uses OpenZeppelin’s `ECDSA`
+- Avoids manual handling of `(v, r, s)`
+
+### MailSystemTest
+
+In `test_deliverAndReadMail` we try to replicate a real-world scenario of off chain creating digest and signing the digest. 
+
+- we built the digest by 
+    1. Get `DOMAIN_SEPARATOR` from target contract
+    2. Get `MAIL_TYPEHASH` from target contract
+    3. Hash the data with the type hash together to get the mailHash
+    3. Hash everything together to form the digest
+    Note: Contracts that implement EIP712 usually has the `DOMAIN_SEPARATOR` and `TYPEHASH` as public for users to read directly, but in case they didn't, all you need to do is follow the hashing method provided above
+- Mimic the signature signing off-chain with `vm.sign` foundry function
+- Mimic a relayer (any third-party address) to deliver the message on behalf of Alice with her signature
