@@ -3,6 +3,12 @@ Hi! This is my personal playground for researching and playing with the EIP712 s
 
 Before we get into the details of signature verification, you might want to understand how private key and public key works in Ethereum. If so, please [click here](./introduction/README.md) to our dedicated introduction.
 
+## Prerequisite
+You will need Foundry installed, then run 
+```
+forge build
+```
+
 
 # EIP-712
 
@@ -162,12 +168,17 @@ On-chain verification uses the `ecrecover` function
 address signer = ecrecover(digest, v, r, s);
 ``` 
 
-## Example 
+## Example 1
 
 To solidify the concepts above, this repository includes a **minimal on-chain mail system**:
 
 - `MailSystem.sol` → contract implementation  
 - `MailSystem.t.sol` → Foundry test demonstrating signing + verification  
+
+you can run the test by the following command:
+```
+forge test --match-contract MailSystemTest -vvv
+```
 
 ### MailSystem
 
@@ -207,13 +218,133 @@ In `test_deliverAndReadMail` we try to replicate a real-world scenario of off ch
 - Mimic the signature signing off-chain with `vm.sign` foundry function
 - Mimic a relayer (any third-party address) to deliver the message on behalf of Alice with her signature
 
+## Example 2
+In some cases, however, the data structures get a little bit more complicated. In this example we will look into two different exceptions where further hashing is required before creating the digest. Building on top of the previous example, you will find the following files: 
+- `src/AdvancedMailSystem.sol` → contract implementation of a more complex Mail Struct
+- `src/AdvancedMailSystem.t.sol` → Foundry test demonstrating signing + verification of complex struct
+
+you can run the test by the following command:
+```
+forge test --match-contract AdvancedMailSystemTest -vvv
+```
+
+### AdvancedMailSystem
+In this implementation, you can see two complex variations:
+1. Nested Struct
+2. Array (of strings)
+```solidity
+struct Product {
+    uint256 id;
+    uint256 price;
+    string name;
+}
+
+
+struct AdvancedMail {
+    address from;
+    address to;
+    Product product;   // <---- Nested Struct
+    string[] tags;     // <---- String Array
+}
+```
+**Nested Structs:** Nested structs cannot be encoded directly. Instead, they must be **recursively hashed** using their own `TYPEHASH`. This is because EIP-712 requires that every struct is reduced into a **deterministic `bytes32` representation**. If you encode a struct directly, the encoding becomes ambiguous and breaks compatibility with off-chain signing.
+
+Step 1: Define a `TYPEHASH` for the nested struct
+
+```solidity
+bytes32 public constant PRODUCT_TYPEHASH =
+    keccak256("Product(uint256 id,uint256 price,string name)");
+```
+Step 2: Hash the struct
+```Solidity
+function hashProduct(Product memory p) public pure returns (bytes32) {
+    return keccak256(
+        abi.encode(
+            PRODUCT_TYPEHASH,
+            p.id,
+            p.price,
+            keccak256(bytes(p.name)) // string → hash
+        )
+    );
+}
+```
+Step 3: Use the hashed value in the parent struct
+```solidity
+abi.encode(
+    ADVANCEDMAIL_TYPEHASH,
+    mail.from,
+    mail.to,
+    hashProduct(mail.product), // <---- use hash, NOT struct
+    ...
+)
+```
+**Array (of strings):** Arrays of dynamic types require two levels of hashing.This is because string is dynamic (variable length). Arrays introduce ordering and concatenation ambiguity, so we must normalize each element and normalize the array
+***NOTE:*** You can directly hash a normal array of fixed sized elements
+
+Step 1: Hash each string
+
+```solidity
+bytes32[] memory tagHashes = new bytes32[](tags.length);
+
+for (uint256 i = 0; i < tags.length; i++) {
+    tagHashes[i] = keccak256(bytes(tags[i]));
+}
+```
+Step 2: Hash the array
+```solidity
+bytes32 tagsHash = keccak256(
+    abi.encodePacked(tagHashes)
+);
+```
+Step 3: Use in struct encoding
+```solidity
+abi.encode(
+    ADVANCEDMAIL_TYPEHASH,
+    mail.from,
+    mail.to,
+    ...,
+    tagsHash
+)
+```
+## EIP-712 Type Handling Summary
+
+Although production systems should rarely require handling highly complex EIP-712 data structures, and contract designers are generally encouraged to keep on-chain data models as simple as possible, understanding how different data types must be encoded and hashed remains technically important. A clear grasp of these distinctions is essential for implementing correct, secure, and interoperable signature flows.
+
+The table below summarizes the correct handling for each category:
+
+
+### Type Handling Table
+
+| Category | Example | How to Encode | Needs Pre-Hash? | Notes |
+|----------|--------|--------------|----------------|------|
+| **Primitive (Value Types)** | `uint256`, `address`, `bool`, `bytes32` | `abi.encode(...)` | ❌ No | Directly encoded |
+| **Dynamic Types** | `string`, `bytes` | `keccak256(bytes(...))` | ✅ Yes | Must hash before encoding |
+| **Struct** | `Product`, `Mail` | `hashStruct(...)` | ✅ Yes | Recursive hashing using TYPEHASH |
+| **Array (Primitive)** | `uint256[]`, `address[]` | `keccak256(abi.encodePacked(arr))` | ❌ No | Elements are fixed-size |
+| **Array (Dynamic Types)** | `string[]`, `bytes[]` | Hash each → pack → hash | ✅ Yes | Two-level hashing required |
+| **Array (Structs)** | `Product[]` | Hash each struct → pack → hash | ✅ Yes | Recursive hashing |
+| **Nested Struct** | `Mail → Product` | `hashStruct(inner)` | ✅ Yes | Must hash before encoding |
+
+
 # Real-world Usage
-You might already have a brief understanding of the importance of EIP712. Now it is time for us to take a look at how we can utilize this standard to improve the Ethereum ecosystem. 
+EIP-712 is widely used across Ethereum because it enables **secure, structured, and human-readable signing**. Instead of asking users to sign opaque hashes, applications can present clear, typed data allowing users to understand exactly what they are approving. This improves both **security and user experience**. At the same time, EIP-712 ensures **deterministic encoding**, meaning the same data will always produce the same hash across different environments (frontend, backend, and smart contracts). Its inclusion of a **domain separator** binds signatures to a specific contract and chain, preventing replay attacks. 
 
-EIP-712 is widely adopted across DeFi and Web3:
+One of the most prominent real-world applications of EIP-712 is **ERC20 Permit (EIP-2612)**.
 
-- **ERC20 Permit (EIP-2612)** → gasless token approvals  
-- **NFT marketplaces** → off-chain order signing  
-- **DAO voting systems** → signed votes  
-- **Authentication systems** → "Sign-in with Ethereum"  
-- **Bridges & cross-chain protocols** → verified off-chain intents  
+Traditionally, interacting with ERC20 tokens requires users to send an `approve` transaction before another contract can spend their tokens. This costs gas and requires two transactions:
+
+1. `approve`
+2. `transferFrom`
+
+ERC20 Permit improves this by allowing users to:
+
+- Sign an approval message **off-chain** using EIP-712  
+- Submit that signature on-chain to authorize token spending  
+
+This enables:
+
+- **Gasless approvals** (user does not need ETH)  
+- **Single-transaction workflows**  
+- **Better UX for DeFi protocols**  
+
+If you want to learn more about ERC20 Permit you can click here to my [ERC20-Permit-Playground](https://github.com/shamadrian/ERC20-Permit-Playground)
