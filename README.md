@@ -9,6 +9,14 @@ You will need Foundry installed, then run
 forge build
 ```
 
+## Contents
+- [EIP-712](#eip-712)
+- [Full flow of EIP 712](#full-flow-of-eip-712)
+- [Basic Example](#basic-example)
+- [Advanced Example](#advanced-example)
+- [EIP-712 Type Handling Summary](#eip-712-type-handling-summary)
+- [Real-world Usage](#real-world-usage)
+
 
 # EIP-712
 
@@ -18,7 +26,7 @@ forge build
 - Deterministic
 - Secure against replay attacks
 
-## ❌ The Problem 
+## The Current Problem 
 
 In Ethereum, signing typically looks like this:
 
@@ -31,7 +39,7 @@ This approach has several issues:
 3. **Poor UX** — users cannot clearly see what they are signing
 4. **Replay risks** — signatures can be reused across domains
 
-## ✅ Solution
+## How EIP712 Solves This
 
 EIP-712 introduces structured signing by enforcing:
 
@@ -168,7 +176,7 @@ On-chain verification uses the `ecrecover` function
 address signer = ecrecover(digest, v, r, s);
 ``` 
 
-## Example 1
+## Basic Example 
 
 To solidify the concepts above, this repository includes a **minimal on-chain mail system**:
 
@@ -218,7 +226,7 @@ In `test_deliverAndReadMail` we try to replicate a real-world scenario of off ch
 - Mimic the signature signing off-chain with `vm.sign` foundry function
 - Mimic a relayer (any third-party address) to deliver the message on behalf of Alice with her signature
 
-## Example 2
+## Advanced Example
 In some cases, however, the data structures get a little bit more complicated. In this example we will look into two different exceptions where further hashing is required before creating the digest. Building on top of the previous example, you will find the following files: 
 - `src/AdvancedMailSystem.sol` → contract implementation of a more complex Mail Struct
 - `src/AdvancedMailSystem.t.sol` → Foundry test demonstrating signing + verification of complex struct
